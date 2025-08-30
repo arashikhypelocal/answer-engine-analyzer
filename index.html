@@ -1,282 +1,193 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="h-full">
 <head>
-<meta charset="utf-8">
-<title>AEO Extractor</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-  :root{
-    --bg:#0b1222;--panel:#0f172a;--border:#1f2937;--text:#e5e7eb;--sub:#94a3b8;--brand:#22d3ee;
-  }
-  body{margin:0;background:linear-gradient(180deg,#0a0f1f 0,#0b1222 50%,#0a0f1f);color:var(--text);
-       font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif}
-  .wrap{max-width:980px;margin:24px auto;padding:0 16px}
-  h1{font-size:24px;margin:0 0 8px}
-  .card{background:rgba(15,23,42,.6);border:1px solid var(--border);border-radius:14px;padding:16px;margin:14px 0}
-  .muted{color:var(--sub)}
-  .row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
-  input[type=file], textarea, input[type=number], input[type=text]{background:#0a0f1f;color:var(--text);
-    border:1px solid var(--border);border-radius:10px;padding:10px}
-  textarea{width:100%;min-height:140px}
-  .btn{cursor:pointer;border-radius:10px;border:1px solid var(--border);background:#111827;color:var(--text);
-    padding:10px 14px}
-  .btn.primary{background:linear-gradient(180deg,#0891b2,#0e7490);border-color:#0e7490}
-  .btn.warn{background:linear-gradient(180deg,#7c2d12,#b45309)}
-  .grid{display:grid;grid-template-columns:1fr;gap:12px}
-  @media(min-width:900px){.grid{grid-template-columns:1fr 1fr}}
-  table{width:100%;border-collapse:collapse;font-size:14px}
-  th,td{border-bottom:1px solid var(--border);padding:8px;text-align:left}
-  .pill{display:inline-block;padding:4px 10px;border:1px solid #155e75;border-radius:999px;
-    color:#7dd3fc;background:rgba(8,145,178,.12);font-size:12px}
-  .status{margin-top:8px}
-  .downloads .btn{white-space:nowrap}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <h1>AEO Extractor</h1>
-  <div class="muted">All processing is done in your browser</div>
+  <meta charset="utf-8" />
+  <title>Answer Engine Analyzer</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <!-- Inter font (clean, modern) -->
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-  <!-- INPUT -->
-  <div class="card">
-    <h3>1) Provide Input</h3>
-    <div class="grid">
-      <div>
-        <div><strong>Upload .txt</strong></div>
-        <input id="fileInput" type="file" accept=".txt">
-      </div>
-      <div>
-        <div><strong>Or paste raw text</strong></div>
-        <textarea id="pasteArea" placeholder='{
-    "title": "Best Calgary Roofing Companies",
-    "create_time": 1755790426.905536,
-    "update_time": 1755790438.622881,
-    "mapping": {'></textarea>
-      </div>
-    </div>
-    <div class="row" style="margin-top:10px">
-      <button class="btn primary" id="runExtract">Run Extraction</button>
-      <button class="btn" id="resetBtn">Reset</button>
-      <span class="pill" id="inputInfo">no input loaded</span>
-    </div>
-    <div class="status muted" id="extractStatus"></div>
-  </div>
-
-  <!-- EXTRACTOR OUTPUT -->
-  <div class="card">
-    <h3>2) Extracted Output</h3>
-    <div class="row downloads">
-      <button class="btn" id="dlExtracted">Download extracted.txt</button>
-    </div>
-    <details style="margin-top:10px">
-      <summary><strong>Preview (first 2000 chars)</strong></summary>
-      <pre id="extractedPreview" style="white-space:pre-wrap"></pre>
-    </details>
-  </div>
-
-  <!-- NGRAMS -->
-  <div class="card">
-    <h3>3) N-grams (from extracted content only — excludes URLs)</h3>
-    <div class="row" style="margin-bottom:10px">
-      <label>Top K <input id="topK" type="number" min="1" value="50" style="width:90px"></label>
-      <label>Min Freq <input id="minFreq" type="number" min="1" value="1" style="width:90px"></label>
-      <label>Extra stopwords (comma) <input id="extraStop" type="text" placeholder="dxp,cms" style="width:220px"></label>
-      <label>Blacklist tokens (comma) <input id="extraBlack" type="text" placeholder="title,snippet" style="width:220px"></label>
-      <button class="btn primary" id="runNgrams">Run N-grams</button>
-    </div>
-    <div class="row downloads">
-      <button class="btn" id="dlBi">bigrams.csv</button>
-      <button class="btn" id="dlTri">trigrams.csv</button>
-      <button class="btn" id="dlFour">fourgrams.csv</button>
-    </div>
-    <div class="status muted" id="ngStatus"></div>
-    <div class="grid" style="margin-top:10px">
-      <div>
-        <h4>Bigrams</h4>
-        <table><thead><tr><th>phrase</th><th>freq</th></tr></thead><tbody id="tblBi"></tbody></table>
-      </div>
-      <div>
-        <h4>Trigrams</h4>
-        <table><thead><tr><th>phrase</th><th>freq</th></tr></thead><tbody id="tblTri"></tbody></table>
-      </div>
-    </div>
-    <div style="margin-top:12px">
-      <h4>4-grams</h4>
-      <table><thead><tr><th>phrase</th><th>freq</th></tr></thead><tbody id="tblFour"></tbody></table>
-    </div>
-  </div>
-</div>
-
-<script>
-/* ----------------- Config & Patterns ----------------- */
-const KEYS = ["title","url","snippet","matched_text","alt"];
-const PAIR_RE = new RegExp(String.raw`^\s*"?` +
-  `(title|url|snippet|matched_text|alt)` +
-  String.raw`"?\s*:\s*(["“])(.*?)(["”])\s*,?\s*$`, "i");
-
-const URL_RE   = /https?:\/\/\S+|www\.\S+/gi;
-const EMAIL_RE = /\b[\w.-]+@[\w.-]+\.\w+\b/g;
-const TOKEN_RE = /\b[a-zA-Z]{2,}\b/g;
-
-const DEFAULT_STOP = new Set([
- "a","an","the","and","or","but","if","then","else","when","while","for","to","from",
- "in","on","at","by","of","off","over","under","with","without","within","into","out",
- "is","am","are","was","were","be","been","being","do","does","did","doing","have","has","had",
- "i","you","he","she","it","we","they","me","him","her","them","my","your","his","its","our","their",
- "as","that","this","these","those","there","here","so","than","too","very","can","cannot","could",
- "should","would","may","might","must","will","just","not","no","yes","also"
-]);
-const DEFAULT_BLACK = new Set(["http","https","www","com","url","chatgpt","utm","source","amp","html","pdf","title","snippet"]);
-
-/* ----------------- State ----------------- */
-let rawText = "";
-let extractedDict = null;
-let extractedTxt = "";  // combined extracted.txt content
-let caches = { bi:[], tri:[], four:[] };
-
-/* ----------------- Utils ----------------- */
-function escapeHtml(s){ return s.replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function dedupeKeepOrder(arr){ const seen=new Set(), out=[]; for(const v of arr){ if(!seen.has(v)){ seen.add(v); out.push(v); } } return out; }
-function blobDownload(filename, data, mime){ const url = URL.createObjectURL(new Blob([data], {type:mime||'text/plain'})); const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url), 1500); }
-
-/* ----------------- Extraction ----------------- */
-function extractPairs(text){
-  const res = { title:[], url:[], snippet:[], matched_text:[], alt:[] };
-  const lines = text.split(/\r?\n/);
-  for(const line of lines){
-    const m = line.match(PAIR_RE);
-    if(m){
-      const key = m[1].toLowerCase();
-      let val = (m[3]||"").trim().replace(/[“”]/g,'"');
-      res[key].push(val);
+  <!-- Tailwind CDN (no build step) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui', 'Segoe UI', 'Roboto', 'Arial', 'sans-serif'] },
+          colors: {
+            brand: { DEFAULT: '#06b6d4', 50:'#ecfeff', 100:'#cffafe', 200:'#a5f3fc', 300:'#67e8f9', 400:'#22d3ee', 500:'#06b6d4', 600:'#0891b2', 700:'#0e7490', 800:'#155e75', 900:'#164e63' },
+          },
+          boxShadow: {
+            card: '0 8px 30px rgba(2,6,23,.10)',
+            cardHover: '0 12px 42px rgba(2,6,23,.16)',
+            inset: 'inset 0 1px 0 rgba(255,255,255,.06)',
+          }
+        }
+      }
     }
+  </script>
+
+  <!-- Minimal custom tokens + polish -->
+  <link rel="stylesheet" href="styles.css" />
+  <script defer src="app.js"></script>
+</head>
+
+<body class="h-full bg-surface text-ink transition-colors duration-300" data-theme="light">
+  <!-- Gradient backdrop -->
+  <div class="pointer-events-none fixed inset-0 -z-10 bg-grad"></div>
+
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+    <!-- Header -->
+    <header class="mb-8 flex items-center justify-between">
+      <div>
+        <h1 class="text-2xl sm:text-3xl font-semibold tracking-tight leading-tight">
+          Answer Engine Analyzer
+        </h1>
+        <p class="text-sub/90 text-sm mt-1">Everything runs in your browser — fast, private, reliable.</p>
+      </div>
+
+      <!-- Theme toggle -->
+      <button id="themeToggle"
+              class="group inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium
+                     border-edge bg-panel hover:bg-panelHover shadow-sm transition-colors"
+              aria-label="Toggle theme">
+        <span id="themeIcon">🌞</span>
+        <span id="themeLabel">Light</span>
+      </button>
+    </header>
+
+    <!-- Grid -->
+    <main class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- Card: Input -->
+      <section class="card">
+        <div class="card-hd">
+          <h2 class="card-title">1) Provide Input</h2>
+        </div>
+        <div class="space-y-4">
+          <div>
+            <label class="lbl">Upload .txt</label>
+            <input id="fileInput" type="file" accept=".txt" class="input file-input">
+          </div>
+          <div>
+            <label class="lbl">Or paste raw text</label>
+            <textarea id="pasteArea" class="textarea" placeholder='{
+  "title": "Best Calgary Roofing Companies",
+  "create_time": 1755790426.905536,
+  "update_time": 1755790438.622881,
+  "mapping": {
+    "title": "Example",
+    "url": "https://example.com"
   }
-  // dedupe
-  for(const k of KEYS){ res[k] = dedupeKeepOrder(res[k]); }
-  return res;
-}
-function sectionedText(results){
-  const out=[];
-  for(const k of KEYS){
-    for(const v of results[k]) out.push(`${k}: ${v}`);
-    out.push("");
-  }
-  return out.join("\n");
-}
+}'></textarea>
+          </div>
 
-/* ----------------- N-grams ----------------- */
-function cleanAndTokenize(text, extraStop=[], extraBlack=[]){
-  text = text.replace(URL_RE," ").replace(EMAIL_RE," ").toLowerCase().replaceAll("-"," ");
-  const tokens = (text.match(TOKEN_RE) || []);
-  const stop = new Set([...DEFAULT_STOP, ...extraStop.map(s=>s.trim().toLowerCase()).filter(Boolean)]);
-  const black= new Set([...DEFAULT_BLACK, ...extraBlack.map(s=>s.trim().toLowerCase()).filter(Boolean)]);
-  return tokens.filter(t => !stop.has(t) && !black.has(t) && t.length>=2);
-}
-function ngramCounts(tokens, n){
-  const map = new Map();
-  if(tokens.length < n) return map;
-  for(let i=0;i<=tokens.length-n;i++){
-    const gram = tokens.slice(i,i+n).join(" ");
-    map.set(gram, (map.get(gram)||0)+1);
-  }
-  return map;
-}
-function topRows(map, topK, minFreq){
-  const arr = [...map.entries()].filter(([_,c])=>c>=minFreq);
-  arr.sort((a,b)=> b[1]-a[1] || a[0].localeCompare(b[0]));
-  return arr.slice(0, topK);
-}
-function renderTable(tbodyId, rows){
-  const tb = document.getElementById(tbodyId);
-  tb.innerHTML = rows.map(([p,c])=>`<tr><td>${escapeHtml(p)}</td><td>${c}</td></tr>`).join("");
-}
-function rowsToCSV(rows){
-  let csv = "phrase,frequency\n";
-  for(const [p,c] of rows){ csv += `"${p.replaceAll('"','""')}",${c}\n`; }
-  return csv;
-}
+          <div class="flex flex-wrap items-center gap-3">
+            <button id="runExtract" class="btn btn-primary">Run Extraction</button>
+            <button id="resetBtn" class="btn btn-ghost">Reset</button>
+            <span id="inputInfo" class="badge">no input loaded</span>
+          </div>
 
-/* ----------------- Handlers ----------------- */
-const fileInput = document.getElementById('fileInput');
-const pasteArea = document.getElementById('pasteArea');
-const inputInfo = document.getElementById('inputInfo');
-const extractStatus = document.getElementById('extractStatus');
-const extractedPreview = document.getElementById('extractedPreview');
+          <div id="extractStatus" class="text-sub text-sm"></div>
+        </div>
+      </section>
 
-fileInput.addEventListener('change', async (e)=>{
-  const f = e.target.files?.[0];
-  if(!f){ return; }
-  rawText = await f.text();
-  inputInfo.textContent = `loaded file: ${f.name} (${(f.size/1024).toFixed(1)} KB)`;
-});
-document.getElementById('resetBtn').addEventListener('click', ()=>{
-  fileInput.value = "";
-  pasteArea.value = "";
-  rawText = ""; extractedDict = null; extractedTxt = ""; caches = {bi:[], tri:[], four:[]};
-  inputInfo.textContent = "no input loaded";
-  extractStatus.textContent = "";
-  extractedPreview.textContent = "";
-  document.getElementById('tblBi').innerHTML = "";
-  document.getElementById('tblTri').innerHTML = "";
-  document.getElementById('tblFour').innerHTML = "";
-  document.getElementById('ngStatus').textContent = "";
-});
+      <!-- Card: Extracted Preview & Download -->
+      <section class="card">
+        <div class="card-hd">
+          <h2 class="card-title">2) Extracted Output</h2>
+        </div>
+        <div class="space-y-4">
+          <div class="flex flex-wrap gap-3">
+            <button id="dlExtracted" class="btn btn-ghost">Download extracted.txt</button>
+          </div>
 
-document.getElementById('runExtract').addEventListener('click', ()=>{
-  const pasted = (pasteArea.value||"").trim();
-  const source = (rawText && rawText.trim()) ? rawText : pasted;
-  if(!source){ extractStatus.textContent = "❌ Provide a file or paste text first."; return; }
-  extractedDict = extractPairs(source);
-  extractedTxt = sectionedText(extractedDict);
-  extractStatus.textContent = `✅ Extraction complete. title=${extractedDict.title.length}, url=${extractedDict.url.length}, snippet=${extractedDict.snippet.length}, matched_text=${extractedDict.matched_text.length}, alt=${extractedDict.alt.length}`;
-  extractedPreview.textContent = extractedTxt.slice(0, 2000);
-});
+          <details class="grp">
+            <summary class="summary">Preview (first 2000 chars)</summary>
+            <pre id="extractedPreview" class="pre"></pre>
+          </details>
+        </div>
+      </section>
 
-document.getElementById('dlExtracted').addEventListener('click', ()=>{
-  if(!extractedTxt){ alert('Run extraction first.'); return; }
-  blobDownload('extracted.txt', extractedTxt, 'text/plain;charset=utf-8');
-});
+      <!-- Card: N-grams Config -->
+      <section class="card lg:col-span-2">
+        <div class="card-hd">
+          <h2 class="card-title">3) N-grams (from extracted content only — excludes URLs)</h2>
+        </div>
 
-document.getElementById('runNgrams').addEventListener('click', ()=>{
-  if(!extractedDict){ alert('Run extraction first.'); return; }
-  const topK = Math.max(1, parseInt(document.getElementById('topK').value||"50",10));
-  const minFreq = Math.max(1, parseInt(document.getElementById('minFreq').value||"1",10));
-  const extraStop = (document.getElementById('extraStop').value||"").split(',').filter(Boolean);
-  const extraBlack = (document.getElementById('extraBlack').value||"").split(',').filter(Boolean);
+        <div class="flex flex-wrap items-end gap-4 mb-4">
+          <label class="lbl-sm">
+            <span>Top K</span>
+            <input id="topK" type="number" min="1" value="50" class="input w-28">
+          </label>
+          <label class="lbl-sm">
+            <span>Min Freq</span>
+            <input id="minFreq" type="number" min="1" value="1" class="input w-28">
+          </label>
+          <label class="lbl-sm grow">
+            <span>Extra stopwords (comma)</span>
+            <input id="extraStop" type="text" placeholder="dxp,cms" class="input w-full">
+          </label>
+          <label class="lbl-sm grow">
+            <span>Blacklist tokens (comma)</span>
+            <input id="extraBlack" type="text" placeholder="title,snippet" class="input w-full">
+          </label>
 
-  // Build corpus from extracted content fields, excluding URLs
-  const fields = ["title","snippet","matched_text","alt"];
-  const corpus = fields.map(k => (extractedDict[k]||[]).join("\n")).join("\n");
-  const tokens = cleanAndTokenize(corpus, extraStop, extraBlack);
+          <button id="runNgrams" class="btn btn-primary shrink-0">Run N-grams</button>
+        </div>
 
-  const biMap = ngramCounts(tokens, 2);
-  const triMap = ngramCounts(tokens, 3);
-  const fourMap = ngramCounts(tokens, 4);
+        <div class="flex flex-wrap gap-3 mb-2">
+          <button id="dlBi" class="btn btn-ghost">bigrams.csv</button>
+          <button id="dlTri" class="btn btn-ghost">trigrams.csv</button>
+          <button id="dlFour" class="btn btn-ghost">fourgrams.csv</button>
+        </div>
 
-  caches.bi = topRows(biMap, topK, minFreq);
-  caches.tri = topRows(triMap, topK, minFreq);
-  caches.four = topRows(fourMap, topK, minFreq);
+        <div id="ngStatus" class="text-sub text-sm mb-4"></div>
 
-  renderTable('tblBi', caches.bi);
-  renderTable('tblTri', caches.tri);
-  renderTable('tblFour', caches.four);
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <!-- Bigrams -->
+          <div class="table-card">
+            <div class="table-hd">Bigrams</div>
+            <div class="table-wrap">
+              <table class="tbl">
+                <thead><tr><th>phrase</th><th>freq</th></tr></thead>
+                <tbody id="tblBi"></tbody>
+              </table>
+            </div>
+          </div>
 
-  document.getElementById('ngStatus').textContent =
-    `Done. Tokens=${tokens.length.toLocaleString()} • Unique: bi=${biMap.size}, tri=${triMap.size}, four=${fourMap.size}`;
-});
+          <!-- Trigrams -->
+          <div class="table-card">
+            <div class="table-hd">Trigrams</div>
+            <div class="table-wrap">
+              <table class="tbl">
+                <thead><tr><th>phrase</th><th>freq</th></tr></thead>
+                <tbody id="tblTri"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
 
-document.getElementById('dlBi').addEventListener('click', ()=>{
-  if(!caches.bi.length){ alert('Run N-grams first.'); return; }
-  blobDownload('bigrams.csv', rowsToCSV(caches.bi), 'text/csv;charset=utf-8');
-});
-document.getElementById('dlTri').addEventListener('click', ()=>{
-  if(!caches.tri.length){ alert('Run N-grams first.'); return; }
-  blobDownload('trigrams.csv', rowsToCSV(caches.tri), 'text/csv;charset=utf-8');
-});
-document.getElementById('dlFour').addEventListener('click', ()=>{
-  if(!caches.four.length){ alert('Run N-grams first.'); return; }
-  blobDownload('fourgrams.csv', rowsToCSV(caches.four), 'text/csv;charset=utf-8');
-});
-</script>
+        <!-- Fourgrams -->
+        <div class="table-card mt-6">
+          <div class="table-hd">4-grams</div>
+          <div class="table-wrap">
+            <table class="tbl">
+              <thead><tr><th>phrase</th><th>freq</th></tr></thead>
+              <tbody id="tblFour"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="mt-10 text-center text-xs text-sub/80">
+      Built with care • <span class="text-brand-600">Fast, accessible, robust</span>
+    </footer>
+  </div>
+
+  <!-- Toasts -->
+  <div id="toast" class="toast hidden"></div>
 </body>
 </html>
